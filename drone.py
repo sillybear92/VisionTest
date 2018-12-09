@@ -11,13 +11,19 @@ ix,iy,tx,ty,bx,by = -1,-1,-1,-1,-1,-1
 
 class UserVision:
 	def __init__(self,vision):
+		self.index=0
 		self.vision = vision
+		self.filename=None
 
 	def get_image(self,args):
-		img= self.vision.get_latest_valid_picture()
-		if(img is not None):
-			filename="test_img.png"
-			cv2.imwrite(filename,img)
+		print("in save pictures on image %d " % self.index)
+		img = self.vision.get_latest_valid_picture()
+		if (img is not None):
+			filename = "test_image_%06d.png" % self.index
+			cv2.imwrite(filename, img)
+			self.index +=1
+			self.filename=filename
+            #print(self.index)
 
 
 # Mouse Callback함수
@@ -36,11 +42,12 @@ def draw_bbox(event, x,y, flags, param):
 		ix,iy=-1,-1
 		
 def main():
+	tc=tracker.createTrackerByName("KCF")
 	# 일반모드에서 블루투스를 사용하여 드론을 찾는다, 드론의 연결 주소와 이름이 반환된다 
 	# addr,name = findMinidrone.getMamboAddr()
 	addr = None
 	# 드론 객체 생성 FPV의 경우는 WIFI를 사용하며, use_wifi = True가 된다
-	mambo = Mambo(use_wifi=True)
+	mambo = Mambo(addr,use_wifi=True)
 	# 드론을 연결한다
 	success=mambo.connect(3)
 	print("Connect: %s" %success)
@@ -55,11 +62,12 @@ def main():
 	# FPV 연결
 	mamboVision = DroneVision(mambo, is_bebop=False, buffer_size=30)
 	userVision=UserVision(mamboVision)
-
+	mamboVision.set_user_callback_function(userVision.get_image, user_callback_args=None)
 	cv2.namedWindow('Vision')
 	cv2.setMouseCallback('Vision',draw_bbox)
-
-	mask = np.ones((480,600,3),dtype=np.uint8)
+	success = mamboVision.open_video()
+	img = cv2.imread(mamboVision.filename,cv2.IMREAD_COLOR)
+	mask = np.ones_like(img,dtype=np.uint8)
 
 	tc=tracker.createTrackerByName("KCF")
 	# Tracking Mode
@@ -69,23 +77,21 @@ def main():
 
 	mov = drawMov()
 	mov.mambo=mambo
-	mamboVision.set_user_callback_function(userVision.get_image,user_callback_args=None)
-	success=mamboVision.open_video()
 	while(True):
 		# OpenCV를 바탕으로 드론을 제어 하기위해 마스킹이미지를 생성한다
 		# mask = np.ones((480,600,3),dtype=np.uint8)
+		img = cv2.imread(mamboVision.filename,cv2.IMREAD_COLOR)
+		print(img.shape)
 		# 드론과 연결이 끊기지 않기 위해 매 프레임마다 상태 확인 신호를 보낸다
 		mambo.smart_sleep(0.01)
 		# 드론의 배터리를 확인 할 수 있다
 		battery=mambo.sensors.battery
 		print("Battery: %s" %battery)
-		img = cv2.imread("test_img.png",cv2.IMREAD_COLOR)
-		print(img)
 		#img=cv2.add(img,mask)
 		#if mode==True:
 		#	bbox=tracker.updateTracker(img,tc)
 		#	angleStack,yawTime=mov.adjPos(mask,bbox,angleStack,yawTime)
-		cv2.imshow("Vision",img)
+		cv2.imshow("Vision",mask)
 		key=cv2.waitKey(10)
 		# 'q' 키를 누르면 드론을 착륙하고 프로세스를 종료한다
 		if ord('q')==key:
